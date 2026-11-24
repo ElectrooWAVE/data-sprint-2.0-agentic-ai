@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from decimal import Decimal
-from typing import Literal
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
@@ -28,3 +28,9 @@ class DecideRequest(BaseModel):
 
     def missing_custom_fields(self) -> list[str]:
         return [f for f in CUSTOM_FIELDS if getattr(self, f) is None]
+
+
+class BatchChunkRequest(BaseModel):
+    """Stateless batch chunk payload (up to 250 rows per request)."""
+
+    rows: list[dict[str, Any]] = Field(..., min_length=1, max_length=250)

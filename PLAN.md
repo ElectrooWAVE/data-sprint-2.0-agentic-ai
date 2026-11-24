@@ -41,7 +41,13 @@
 
 - **Demo Stage 3: Polish, Accessibility, End-to-End Verification & Screenshots** — **COMPLETED (verified alongside Stage 2)**
 - **Demo Stage 4: Hosting Readiness & Demo Script** — **COMPLETED**
-  - `requirements.txt` (pinned Python 3.14-compatible dependencies), `Dockerfile` (`python:3.14-slim` + `/api/health` `HEALTHCHECK`), `.dockerignore`, `.env.example`, `README.md` (`Run locally` + `Deploy` for Docker, Render, and Plain VM), and `DEMO.md` (3-minute 5-thread walkthrough + 5 judge Q&As).
+  - `requirements.txt` (compatible with Python 3.12–3.14), `Dockerfile` (`python:3.14-slim` + `/api/health` `HEALTHCHECK`), `.dockerignore`, `.env.example`, `README.md`, and `DEMO.md`.
+
+- **Demo Stage 5: Stateless Vercel Serverless Refactor** — **COMPLETED**
+  - `scripts/precompute.py` -> `ui/data/` (`real.json`, `sample.json`, `real_submission.csv`, `sample_submission.csv`): precomputed static payloads for instant default dataset loading.
+  - Replaced stateful in-memory job polling with stateless `POST /api/batch/chunk` (up to 250 rows/request) + client-side CSV parsing, chunked progress, analytics, filtering, sorting, pagination, and CSV download in `ui/app.js`.
+  - Added `api/index.py` and `vercel.json` (`maxDuration: 60`, `includeFiles`, static `ui/` + `/data/` routing) and routed temp directories to `/tmp` when present.
+  - Verified with `pytest`, `evaluate.py`, unchanged `submission_final.csv` SHA-256, and a 2-worker `uvicorn --workers 2` Playwright batch upload test.
 
 ---
 

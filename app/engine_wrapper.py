@@ -23,6 +23,8 @@ from typing import Any
 
 from app.config import Settings, settings
 
+_TMP_DIR = "/tmp" if Path("/tmp").is_dir() else None
+
 _SRC_DIR = settings.root / "src"
 if str(_SRC_DIR) not in sys.path:
     sys.path.insert(0, str(_SRC_DIR))
@@ -274,7 +276,7 @@ class Engine:
             self._by_id[t.thread_id] = (t, "sample")
 
         self.labels: dict[str, str] = {}
-        with tempfile.TemporaryDirectory(prefix="pd_startup_") as td:
+        with tempfile.TemporaryDirectory(prefix="pd_startup_", dir=_TMP_DIR) as td:
             wpath = Path(td) / "warnings.jsonl"
             for t in self.sample_threads + self.real_threads:
                 self.labels[t.thread_id] = evaluate_thread(t, self.playbook, warnings_path=wpath).label
@@ -347,7 +349,7 @@ class Engine:
         return evaluate_thread(thread, self.playbook, warnings_path=warnings_path)
 
     def explain(self, thread: ThreadRow, source: str | None = None) -> dict[str, Any]:
-        with tempfile.TemporaryDirectory(prefix="pd_explain_") as td:
+        with tempfile.TemporaryDirectory(prefix="pd_explain_", dir=_TMP_DIR) as td:
             wpath = Path(td) / "warnings.jsonl"
             res = evaluate_thread(thread, self.playbook, warnings_path=wpath)  # THE decision
             warnings = _read_jsonl(wpath)
@@ -696,6 +698,93 @@ class Engine:
         for s in accepted:
             s["text"] = msg[s["start"]:s["end"]]
         return accepted
+
+    def process_chunk(self, raw_rows: list[dict[str, Any]], max_chunk_rows: int = 250) -> list[dict[str, Any]]:
+        """Validate and evaluate a stateless chunk of rows using /tmp for any warnings."""
+        if not raw_rows:
+            raise CsvValidationError("Chunk contains no rows.")
+        if len(raw_rows) > max_chunk_rows:
+            raise CsvValidationError(f"Chunk exceeds limit of {max_chunk_rows} rows (got {len(raw_rows)}).")
+
+        threads: list[ThreadRow] = []
+        errors: list[str] = []
+        for idx, row in enumerate(raw_rows, start=1):
+            row_errs: list[str] = []
+            tid = str(row.get("thread_id") or "").strip()
+            if not tid:
+                row_errs.append("thread_id is empty")
+            try:
+                tdate = date.fromisoformat(str(row.get("date") or "").strip())
+            except ValueError:
+                row_errs.append(f"date {row.get('date')!r} is not YYYY-MM-DD")
+                tdate = None
+            supplier = str(row.get("supplier") or "").strip()
+            if supplier not in self.playbook.suppliers and supplier.lower() not in self.playbook.suppliers:
+                row_errs.append(f"unknown supplier {supplier!r}")
+            category = str(row.get("category") or "").strip()
+            if category.lower() not in self.playbook.categories and category.lower() not in self.playbook.name_to_slug:
+                row_errs.append(f"unknown category {category!r}")
+            try:
+                qty = int(str(row.get("quantity") or "").strip())
+                if qty < 1:
+                    raise ValueError
+            except ValueError:
+                row_errs.append(f"quantity {row.get('quantity')!r} is not a positive integer")
+                qty = 0
+            try:
+                rnd = int(str(row.get("round") or "").strip())
+                if rnd < 1:
+                    raise ValueError
+            except ValueError:
+                row_errs.append(f"round {row.get('round')!r} is not a positive integer")
+                rnd = 0
+            olc_raw = str(row.get("our_last_counter") or "").strip()
+            olc = None
+            if olc_raw:
+                try:
+                    olc = _parse_decimal(olc_raw)
+                except InvalidOperation:
+                    row_errs.append(f"our_last_counter {olc_raw!r} is not a number")
+            msg = row.get("supplier_message")
+            if msg is None:
+                row_errs.append("supplier_message is missing")
+
+            if row_errs:
+                errors.append(f"Row {idx} ({tid or 'no id'}): " + "; ".join(row_errs))
+                if len(errors) >= 20:
+                    break
+                continue
+
+            threads.append(
+                ThreadRow(
+                    thread_id=tid,
+                    thread_date=tdate,
+                    supplier=supplier,
+                    category=category,
+                    quantity=qty,
+                    round_num=rnd,
+                    our_last_counter=olc,
+                    supplier_message=str(msg),
+                )
+            )
+
+        if errors:
+            raise CsvValidationError(f"{len(errors)} invalid row(s) in chunk.", errors)
+
+        out_rows: list[dict[str, Any]] = []
+        with tempfile.TemporaryDirectory(prefix="pd_chunk_", dir=_TMP_DIR) as td:
+            wpath = Path(td) / "warnings.jsonl"
+            for t in threads:
+                res = self.decide(t, wpath)
+                out_rows.append(self.summarize(t, res))
+            warns = _read_jsonl(wpath)
+
+        by_tid: dict[str, list[str]] = {}
+        for w in warns:
+            by_tid.setdefault(w["thread_id"], []).append(w["reason"])
+        for r in out_rows:
+            r["warnings"] = by_tid.get(r["thread_id"], [])
+        return out_rows
 
     def summarize(self, thread: ThreadRow, res: DecisionResult) -> dict[str, Any]:
         fired = next(s for s in res.trace if s["outcome"] != "continue")

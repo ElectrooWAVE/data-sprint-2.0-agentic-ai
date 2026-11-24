@@ -9,16 +9,17 @@
     "demo_stage1_backend",
     "demo_stage2_frontend",
     "demo_stage3_polish_verify",
-    "demo_stage4_hosting"
+    "demo_stage4_hosting",
+    "demo_stage5_stateless_vercel"
   ],
-  "current_stage": "completed",
+  "current_stage": "vercel_stateless_ready",
   "sample_evaluation": {
     "correct": 40,
     "total": 40,
     "accuracy": 100.0,
-    "updated_at": "2026-11-24T09:20:59.113875+00:00"
+    "updated_at": "2026-11-24T09:53:07.711664+00:00"
   },
-  "last_updated": "2026-11-24T09:20:59.363416+00:00",
+  "last_updated": "2026-11-24T09:53:15.411560+00:00",
   "selfcheck": {
     "sample_round_gt_1_checked": 30,
     "sample_mismatches": 0,
@@ -93,5 +94,14 @@
     "console_errors": 0,
     "updated_at": "2026-11-24T09:18:12.303237+00:00"
   },
-  "docker_base_image": "python:3.14-slim"
+  "docker_base_image": "python:3.14-slim",
+  "stateless_vercel": {
+    "pytest_passed": 7,
+    "pytest_total": 7,
+    "precomputed_real_json_bytes": 902960,
+    "precomputed_sample_json_bytes": 21630,
+    "multiworker_simulation_passed": true,
+    "submission_final_sha256": "2c477b681125c896c401824e1d7fec45babbab548a9624ecf3dd5649ec767bc9",
+    "updated_at": "2026-11-24T09:53:15.411560+00:00"
+  }
 }

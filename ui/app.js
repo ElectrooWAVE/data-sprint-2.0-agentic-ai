@@ -10,8 +10,10 @@
     selectedId: null,
     meta: null,
     expandedSteps: new Set(),
-    batchJobId: null,
-    batchPollTimer: null,
+    batchRows: [],
+    batchAnalytics: null,
+    batchSourceName: "",
+    batchInputById: {},
     batchSortBy: "thread_id",
     batchSortDir: "asc",
     batchOffset: 0,
@@ -682,39 +684,201 @@
     if (file) startUploadBatch(file);
   });
 
-  $("run-real-batch-btn").addEventListener("click", () => startBundledBatch("real"));
-  $("run-sample-batch-btn").addEventListener("click", () => startBundledBatch("sample"));
+  $("run-real-batch-btn").addEventListener("click", () => loadStaticBatch("/data/real.json", "threads.csv"));
+  $("run-sample-batch-btn").addEventListener("click", () => loadStaticBatch("/data/sample.json", "sample_threads.csv"));
   $("download-csv-btn").addEventListener("click", () => {
-    if (state.batchJobId) {
-      window.location.href = `/api/batch/${encodeURIComponent(state.batchJobId)}/download`;
-    }
+    if (!state.batchRows.length) return;
+    const lines = ["thread_id,label"];
+    state.batchRows.forEach((r) => {
+      lines.push(`${r.thread_id},${r.label}`);
+    });
+    const blob = new Blob([lines.join("\r\n") + "\r\n"], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "submission.csv";
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
   });
 
-  async function startUploadBatch(file) {
-    const fd = new FormData();
-    fd.append("file", file);
-    await launchBatch(() => apiJSON("/api/batch", { method: "POST", body: fd }));
+  const REQUIRED_CSV_COLS = [
+    "thread_id",
+    "date",
+    "supplier",
+    "category",
+    "quantity",
+    "round",
+    "our_last_counter",
+    "supplier_message",
+  ];
+  const MAX_CSV_BYTES = 5 * 1024 * 1024;
+  const MAX_CSV_ROWS = 5000;
+  const CHUNK_SIZE = 250;
+
+  function parseCsvText(rawText) {
+    const text = rawText.charCodeAt(0) === 0xfeff ? rawText.slice(1) : rawText;
+    const rows = [];
+    let row = [];
+    let field = "";
+    let inQuotes = false;
+
+    for (let i = 0; i < text.length; i++) {
+      const ch = text[i];
+      if (inQuotes) {
+        if (ch === '"') {
+          if (text[i + 1] === '"') {
+            field += '"';
+            i++;
+          } else {
+            inQuotes = false;
+          }
+        } else {
+          field += ch;
+        }
+      } else if (ch === '"') {
+        inQuotes = true;
+      } else if (ch === ",") {
+        row.push(field);
+        field = "";
+      } else if (ch === "\r") {
+        if (text[i + 1] === "\n") i++;
+        row.push(field);
+        rows.push(row);
+        row = [];
+        field = "";
+      } else if (ch === "\n") {
+        row.push(field);
+        rows.push(row);
+        row = [];
+        field = "";
+      } else {
+        field += ch;
+      }
+    }
+    if (field.length > 0 || row.length > 0) {
+      row.push(field);
+      rows.push(row);
+    }
+    while (rows.length && rows[rows.length - 1].length === 1 && rows[rows.length - 1][0] === "") {
+      rows.pop();
+    }
+    if (!rows.length) {
+      throw new Error("The CSV file is empty.");
+    }
+    const header = rows[0].map((h) => h.trim());
+    const missing = REQUIRED_CSV_COLS.filter((c) => !header.includes(c));
+    if (missing.length) {
+      throw new Error(`Missing required column(s): ${missing.join(", ")}.`);
+    }
+    const dataRows = rows.slice(1);
+    if (!dataRows.length) {
+      throw new Error("The CSV has a header but no data rows.");
+    }
+    if (dataRows.length > MAX_CSV_ROWS) {
+      throw new Error(`Too many rows: ${dataRows.length.toLocaleString("en-IN")} (limit ${MAX_CSV_ROWS.toLocaleString("en-IN")}).`);
+    }
+    const idxMap = Object.fromEntries(header.map((h, i) => [h, i]));
+    return dataRows.map((cols) => {
+      const obj = {};
+      REQUIRED_CSV_COLS.forEach((c) => {
+        obj[c] = cols[idxMap[c]] !== undefined ? cols[idxMap[c]] : "";
+      });
+      return obj;
+    });
   }
 
-  async function startBundledBatch(dataset) {
-    await launchBatch(() => apiJSON(`/api/batch?dataset=${encodeURIComponent(dataset)}`, { method: "POST" }));
+  function computeClientAnalytics(rows) {
+    const total = rows.length;
+    const ACTIONS = ["ACCEPT", "COUNTER", "REJECT", "ESCALATE"];
+    const byAction = { ACCEPT: 0, COUNTER: 0, REJECT: 0, ESCALATE: 0 };
+    const byReason = {};
+    const byCategory = {};
+    const byRound = {};
+    let warningsCount = 0;
+    const gapsTarget = [];
+
+    rows.forEach((r) => {
+      byAction[r.action] = (byAction[r.action] || 0) + 1;
+      byReason[r.reason] = (byReason[r.reason] || 0) + 1;
+      if (!byCategory[r.category]) {
+        byCategory[r.category] = { total: 0, ACCEPT: 0, COUNTER: 0, REJECT: 0, ESCALATE: 0 };
+      }
+      byCategory[r.category].total += 1;
+      byCategory[r.category][r.action] = (byCategory[r.category][r.action] || 0) + 1;
+
+      if (!byRound[r.round]) {
+        byRound[r.round] = { round: r.round, total: 0, ACCEPT: 0, COUNTER: 0, REJECT: 0, ESCALATE: 0 };
+      }
+      byRound[r.round].total += 1;
+      byRound[r.round][r.action] = (byRound[r.round][r.action] || 0) + 1;
+
+      warningsCount += Array.isArray(r.warnings) ? r.warnings.length : 0;
+
+      if (r.action === "COUNTER" && r.p !== null && r.target !== null) {
+        gapsTarget.push(Number(r.p) - Number(r.target));
+      }
+    });
+
+    const sortedReasons = Object.fromEntries(
+      Object.entries(byReason).sort((a, b) => b[1] - a[1])
+    );
+    const sortedCategories = Object.fromEntries(
+      Object.entries(byCategory).sort((a, b) => a[0].localeCompare(b[0]))
+    );
+    const roundsArr = Object.keys(byRound)
+      .map(Number)
+      .sort((a, b) => a - b)
+      .map((k) => {
+        const b = byRound[k];
+        return { ...b, counter_rate_pct: b.total ? Number(((100 * b.COUNTER) / b.total).toFixed(2)) : 0 };
+      });
+
+    const avgGap = gapsTarget.length
+      ? Number((gapsTarget.reduce((s, x) => s + x, 0) / gapsTarget.length).toFixed(2))
+      : null;
+
+    return {
+      total,
+      counts_by_action: Object.fromEntries(ACTIONS.map((a) => [a, byAction[a] || 0])),
+      counts_by_reason: sortedReasons,
+      by_category: sortedCategories,
+      price_gap: { gap_to_target: { avg: avgGap } },
+      counter_rate_by_round: roundsArr,
+      warnings_count: warningsCount,
+    };
   }
 
-  async function launchBatch(starterFn) {
-    clearInterval(state.batchPollTimer);
+  function updateProgress(sourceName, done, total, elapsedMs) {
+    const pctVal = total ? Number(((100 * done) / total).toFixed(1)) : 0;
+    $("batch-progress-fill").style.width = `${pctVal}%`;
+    $("batch-progress-bar").setAttribute("aria-valuenow", String(Math.round(pctVal)));
+    $("batch-pct-text").textContent = `${pctVal}%`;
+    $("batch-status-text").textContent = `${sourceName} — ${done.toLocaleString("en-IN")} / ${total.toLocaleString("en-IN")} threads (${elapsedMs} ms)`;
+  }
+
+  async function loadStaticBatch(url, sourceName) {
+    const t0 = performance.now();
     $("batch-error").hidden = true;
     $("batch-empty").hidden = true;
     $("batch-dashboard").hidden = true;
     $("batch-skeleton").hidden = false;
     $("batch-progress-wrap").hidden = false;
     $("download-csv-btn").disabled = true;
+    updateProgress(sourceName, 0, 1, 0);
 
     try {
-      const start = await starterFn();
-      state.batchJobId = start.job_id;
+      const payload = await apiJSON(url);
+      const elapsed = Math.round(performance.now() - t0);
+      state.batchRows = payload.rows || [];
+      state.batchAnalytics = payload.analytics || computeClientAnalytics(state.batchRows);
+      state.batchSourceName = sourceName;
+      state.batchInputById = {};
       state.batchOffset = 0;
-      pollBatch(start.job_id);
-      state.batchPollTimer = setInterval(() => pollBatch(start.job_id), 150);
+      updateProgress(sourceName, state.batchRows.length, state.batchRows.length, elapsed);
+      $("download-csv-btn").disabled = state.batchRows.length === 0;
+      renderBatchDashboard();
     } catch (err) {
       $("batch-skeleton").hidden = true;
       $("batch-progress-wrap").hidden = true;
@@ -723,38 +887,60 @@
     }
   }
 
-  async function pollBatch(jobId) {
-    try {
-      const prog = await apiJSON(`/api/batch/${encodeURIComponent(jobId)}`);
-      $("batch-progress-fill").style.width = `${prog.percent}%`;
-      $("batch-progress-bar").setAttribute("aria-valuenow", String(Math.round(prog.percent)));
-      $("batch-pct-text").textContent = `${prog.percent}%`;
-      $("batch-status-text").textContent = `${prog.source} — ${prog.done.toLocaleString("en-IN")} / ${prog.total.toLocaleString("en-IN")} threads (${prog.elapsed_ms} ms)`;
+  async function startUploadBatch(file) {
+    const t0 = performance.now();
+    $("batch-error").hidden = true;
+    $("batch-empty").hidden = true;
+    $("batch-dashboard").hidden = true;
+    $("batch-skeleton").hidden = false;
+    $("batch-progress-wrap").hidden = false;
+    $("download-csv-btn").disabled = true;
 
-      if (prog.status === "completed") {
-        clearInterval(state.batchPollTimer);
-        $("download-csv-btn").disabled = false;
-        await loadBatchDashboard(jobId);
-      } else if (prog.status === "failed") {
-        clearInterval(state.batchPollTimer);
-        $("batch-skeleton").hidden = true;
-        $("batch-error").textContent = prog.error || "Batch job failed.";
-        $("batch-error").hidden = false;
+    try {
+      if (file.size > MAX_CSV_BYTES) {
+        throw new Error(`File is too large: ${file.size.toLocaleString("en-IN")} bytes (limit ${MAX_CSV_BYTES.toLocaleString("en-IN")} bytes).`);
       }
+      const rawText = await file.text();
+      const inputRows = parseCsvText(rawText);
+      const total = inputRows.length;
+      const allResults = [];
+      const inputById = {};
+      inputRows.forEach((r) => {
+        inputById[r.thread_id.trim()] = r;
+      });
+      updateProgress(file.name, 0, total, 0);
+
+      for (let i = 0; i < total; i += CHUNK_SIZE) {
+        const chunk = inputRows.slice(i, i + CHUNK_SIZE);
+        const resp = await apiJSON("/api/batch/chunk", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ rows: chunk }),
+        });
+        allResults.push(...(resp.rows || []));
+        updateProgress(file.name, allResults.length, total, Math.round(performance.now() - t0));
+      }
+
+      state.batchRows = allResults;
+      state.batchAnalytics = computeClientAnalytics(allResults);
+      state.batchSourceName = file.name;
+      state.batchInputById = inputById;
+      state.batchOffset = 0;
+      $("download-csv-btn").disabled = allResults.length === 0;
+      renderBatchDashboard();
     } catch (err) {
-      clearInterval(state.batchPollTimer);
       $("batch-skeleton").hidden = true;
+      $("batch-progress-wrap").hidden = true;
       $("batch-error").textContent = err.message;
       $("batch-error").hidden = false;
     }
   }
 
-  async function loadBatchDashboard(jobId) {
-    const analytics = await apiJSON(`/api/analytics/${encodeURIComponent(jobId)}`);
+  function renderBatchDashboard() {
+    const analytics = state.batchAnalytics;
     $("batch-skeleton").hidden = true;
     $("batch-dashboard").hidden = false;
 
-    // Populate reason filter dropdown
     const reasonSel = $("res-reason");
     const curReason = reasonSel.value;
     reasonSel.replaceChildren();
@@ -787,7 +973,7 @@
     renderCategoryChart($("chart-categories"), analytics.by_category || {});
     renderRoundChart($("chart-rounds"), analytics.counter_rate_by_round || []);
 
-    await loadBatchResults();
+    loadBatchResults();
   }
 
   function renderKPIs(a) {
@@ -929,31 +1115,47 @@
     renderBarChart(container, items, tot);
   }
 
-  async function loadBatchResults() {
-    if (!state.batchJobId) return;
-    const qs = new URLSearchParams({
-      q: $("res-search").value.trim(),
-      action: $("res-action").value,
-      reason: $("res-reason").value,
-      category: $("res-category").value,
-      supplier: $("res-supplier").value,
-      sort_by: state.batchSortBy,
-      sort_dir: state.batchSortDir,
-      limit: String(state.batchLimit),
-      offset: String(state.batchOffset),
-    });
-    // Strip empty filters
-    for (const [k, v] of [...qs.entries()]) {
-      if (!v) qs.delete(k);
-    }
+  const NUMERIC_COLS = new Set(["quantity", "round", "counter_price", "fired_step", "p", "L_r", "total_value"]);
 
-    const data = await apiJSON(`/api/batch/${encodeURIComponent(state.batchJobId)}/results?${qs.toString()}`);
-    state.batchTotal = data.total;
-    $("results-count").textContent = `(${data.total.toLocaleString("en-IN")} matching)`;
+  function loadBatchResults() {
+    if (!state.batchRows.length) return;
+    const ql = $("res-search").value.trim().toLowerCase();
+    const fAct = $("res-action").value;
+    const fReason = $("res-reason").value;
+    const fCat = $("res-category").value;
+    const fSup = $("res-supplier").value;
+
+    const filtered = state.batchRows.filter((r) => {
+      if (ql && !["thread_id", "supplier", "category", "label"].some((k) => String(r[k] || "").toLowerCase().includes(ql))) {
+        return false;
+      }
+      if (fAct && r.action !== fAct) return false;
+      if (fReason && r.reason !== fReason) return false;
+      if (fCat && r.category !== fCat) return false;
+      if (fSup && r.supplier !== fSup) return false;
+      return true;
+    });
+
+    const col = state.batchSortBy;
+    const dir = state.batchSortDir === "desc" ? -1 : 1;
+    const isNum = NUMERIC_COLS.has(col);
+    const present = filtered.filter((r) => r[col] !== null && r[col] !== undefined && r[col] !== "");
+    const absent = filtered.filter((r) => r[col] === null || r[col] === undefined || r[col] === "");
+    present.sort((a, b) => {
+      if (isNum) {
+        return (Number(a[col]) - Number(b[col])) * dir;
+      }
+      return String(a[col]).toLowerCase().localeCompare(String(b[col]).toLowerCase()) * dir;
+    });
+    const sorted = present.concat(absent);
+
+    state.batchTotal = sorted.length;
+    const pageRows = sorted.slice(state.batchOffset, state.batchOffset + state.batchLimit);
+    $("results-count").textContent = `(${sorted.length.toLocaleString("en-IN")} matching)`;
 
     const tbody = $("results-tbody");
     tbody.replaceChildren();
-    data.rows.forEach((r) => {
+    pageRows.forEach((r) => {
       const tr = document.createElement("tr");
       tr.tabIndex = 0;
       const cells = [
@@ -981,7 +1183,21 @@
 
       const openRow = async () => {
         switchTab("explain");
-        await runDecide({ thread_id: r.thread_id });
+        const uploaded = state.batchInputById[r.thread_id];
+        if (uploaded) {
+          await runDecide({
+            thread_id: uploaded.thread_id,
+            supplier: uploaded.supplier,
+            category: uploaded.category,
+            quantity: Number(uploaded.quantity),
+            round: Number(uploaded.round),
+            date: uploaded.date,
+            our_last_counter: uploaded.our_last_counter ? Number(uploaded.our_last_counter) : null,
+            supplier_message: uploaded.supplier_message,
+          });
+        } else {
+          await runDecide({ thread_id: r.thread_id });
+        }
       };
       tr.addEventListener("click", openRow);
       tr.addEventListener("keydown", (e) => {
@@ -993,11 +1209,11 @@
       tbody.appendChild(tr);
     });
 
-    const start = data.total === 0 ? 0 : state.batchOffset + 1;
-    const end = Math.min(state.batchOffset + data.rows.length, data.total);
-    $("page-info").textContent = `Showing ${start}–${end} of ${data.total.toLocaleString("en-IN")}`;
+    const start = sorted.length === 0 ? 0 : state.batchOffset + 1;
+    const end = Math.min(state.batchOffset + pageRows.length, sorted.length);
+    $("page-info").textContent = `Showing ${start}–${end} of ${sorted.length.toLocaleString("en-IN")}`;
     $("prev-page-btn").disabled = state.batchOffset === 0;
-    $("next-page-btn").disabled = state.batchOffset + state.batchLimit >= data.total;
+    $("next-page-btn").disabled = state.batchOffset + state.batchLimit >= sorted.length;
   }
 
   ["res-action", "res-reason", "res-category", "res-supplier"].forEach((id) => {

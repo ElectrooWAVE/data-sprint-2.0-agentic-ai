@@ -31,6 +31,7 @@ class Settings:
     ui_dir: Path
     max_batch_bytes: int
     max_batch_rows: int
+    max_chunk_rows: int
     job_ttl_seconds: int
 
     @classmethod
@@ -55,6 +56,7 @@ class Settings:
             ui_dir=path("PROCUREMENT_UI_DIR", "ui"),
             max_batch_bytes=int(env.get("MAX_BATCH_BYTES", str(5 * 1024 * 1024))),
             max_batch_rows=int(env.get("MAX_BATCH_ROWS", "5000")),
+            max_chunk_rows=int(env.get("MAX_CHUNK_ROWS", "250")),
             job_ttl_seconds=int(env.get("JOB_TTL_SECONDS", "3600")),
         )
 
