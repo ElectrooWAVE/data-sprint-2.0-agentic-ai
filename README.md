@@ -1,5 +1,7 @@
 # The Procurement Desk — Decision Engine & Demo Console
 
+**Live Demo:** https://data-sprint-2-0-agentic-ai.vercel.app
+
 Deterministic procurement negotiation engine (`src/`) scoring **40/40 (100%)** on worked examples and **1.00** on the competition dataset, wrapped read-only by a **stateless** FastAPI backend (`app/`, `api/index.py`) and an offline neomorphic UI (`ui/`).
 
 - **Zero runtime LLM or internet calls:** 100% deterministic `Decimal` arithmetic (`ROUND_HALF_UP`).
@@ -56,6 +58,8 @@ python src/predict.py --fresh && python src/validate.py
 All configuration is environment-driven (see `.env.example`). Paths are relative to the project root, and CORS defaults to **same-origin only** unless `CORS_ORIGINS` is set.
 
 ### 1. Vercel (Serverless)
+
+**Live Deployment:** https://data-sprint-2-0-agentic-ai.vercel.app
 
 `api/index.py` and `vercel.json` are preconfigured for zero-config Vercel deployment:
 - `/api/*` routes to the FastAPI serverless function (`api/index.py`, `maxDuration: 60`, `includeFiles` bundling `app/**`, `src/**`, `playbook/**`, and CSVs).
