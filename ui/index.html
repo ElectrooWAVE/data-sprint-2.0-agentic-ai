@@ -1,0 +1,345 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Procurement Desk — Decision &amp; Audit Console</title>
+  <link rel="icon" type="image/svg+xml" href="assets/favicon.svg">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <a class="skip-link" href="#main-content">Skip to main content</a>
+
+  <header class="topbar">
+    <div class="topbar-brand">
+      <img src="assets/favicon.svg" alt="" class="brand-icon" width="38" height="38">
+      <div>
+        <h1 class="brand-title">Procurement Desk</h1>
+        <p class="brand-sub" id="health-summary">Loading frozen rule engine…</p>
+      </div>
+    </div>
+
+    <nav class="tabs" role="tablist" aria-label="Workspace views">
+      <button
+        type="button"
+        id="tab-explain"
+        class="tab-btn active"
+        role="tab"
+        aria-selected="true"
+        aria-controls="panel-explain"
+      >
+        Explain a thread
+      </button>
+      <button
+        type="button"
+        id="tab-batch"
+        class="tab-btn"
+        role="tab"
+        aria-selected="false"
+        aria-controls="panel-batch"
+      >
+        Batch analysis
+      </button>
+    </nav>
+  </header>
+
+  <main id="main-content" class="container">
+    <!-- TAB 1: EXPLAIN A THREAD -->
+    <section id="panel-explain" class="tab-panel active" role="tabpanel" aria-labelledby="tab-explain">
+      <div class="explain-grid">
+        <!-- LEFT PICKER & CUSTOM FORM -->
+        <aside class="neu-card picker-card" aria-label="Thread selector and custom input">
+          <div class="picker-controls">
+            <div class="segmented" role="group" aria-label="Dataset source">
+              <button type="button" class="seg-btn active" id="src-sample" data-source="sample">Sample (40)</button>
+              <button type="button" class="seg-btn" id="src-real" data-source="real">Real (2,000)</button>
+            </div>
+            <button type="button" class="btn btn-secondary btn-sm" id="toggle-custom-btn" aria-expanded="false" aria-controls="custom-form-wrap">
+              Custom thread
+            </button>
+          </div>
+
+          <div id="custom-form-wrap" class="custom-wrap" hidden>
+            <form id="custom-form" class="custom-form" novalidate>
+              <h2 class="section-title">Custom Thread</h2>
+              <div class="form-row">
+                <label for="c-supplier">Supplier</label>
+                <select id="c-supplier" name="supplier" required></select>
+              </div>
+              <div class="form-row">
+                <label for="c-category">Category</label>
+                <select id="c-category" name="category" required></select>
+              </div>
+              <div class="form-grid-2">
+                <div class="form-row">
+                  <label for="c-qty">Quantity</label>
+                  <input id="c-qty" name="quantity" type="number" min="1" value="50" required>
+                </div>
+                <div class="form-row">
+                  <label for="c-round">Round</label>
+                  <input id="c-round" name="round" type="number" min="1" max="20" value="2" required>
+                </div>
+              </div>
+              <div class="form-grid-2">
+                <div class="form-row">
+                  <label for="c-date">Thread Date</label>
+                  <input id="c-date" name="date" type="date" value="2026-11-15" required>
+                </div>
+                <div class="form-row">
+                  <label for="c-olc">Our Last Counter (₹)</label>
+                  <input id="c-olc" name="our_last_counter" type="number" min="0" placeholder="Optional">
+                </div>
+              </div>
+              <div class="form-row">
+                <label for="c-msg">Supplier Message</label>
+                <textarea id="c-msg" name="supplier_message" rows="5" placeholder="Paste supplier email text…" required>Hello,
+
+For the 50 units you requested, we can offer INR 3,800 per unit.
+
+Regards,</textarea>
+              </div>
+              <div id="custom-error" class="error-banner" role="alert" hidden></div>
+              <button type="submit" class="btn btn-primary btn-block" id="decide-custom-btn">Decide</button>
+            </form>
+          </div>
+
+          <div id="picker-browser">
+            <div class="search-row">
+              <label for="thread-search" class="sr-only">Search threads by ID, supplier, or category</label>
+              <input id="thread-search" type="search" class="neu-input" placeholder="Search ID, supplier, category…">
+            </div>
+
+            <div class="preset-chips" role="group" aria-label="Quick demo presets">
+              <button type="button" class="chip-filter active" data-preset="all">All</button>
+              <button type="button" class="chip-filter" data-preset="injection">Prompt injection</button>
+              <button type="button" class="chip-filter" data-preset="banned">Banned term</button>
+              <button type="button" class="chip-filter" data-preset="blacklist">Blacklisted</button>
+              <button type="button" class="chip-filter" data-preset="missing">Missing info</button>
+              <button type="button" class="chip-filter" data-preset="counter">Counter</button>
+              <button type="button" class="chip-filter" data-preset="probation">Probation</button>
+              <button type="button" class="chip-filter" data-preset="fx">Foreign FX</button>
+              <button type="button" class="chip-filter" data-preset="amendment">Amendment</button>
+            </div>
+
+            <div class="picker-meta" id="picker-meta" aria-live="polite">Loading threads…</div>
+
+            <div id="thread-list-skeleton" class="skeleton-stack" aria-hidden="true">
+              <div class="skeleton-item"></div>
+              <div class="skeleton-item"></div>
+              <div class="skeleton-item"></div>
+              <div class="skeleton-item"></div>
+              <div class="skeleton-item"></div>
+            </div>
+            <ul id="thread-list" class="thread-list" aria-label="Matching threads" hidden></ul>
+            <div id="thread-list-empty" class="empty-state" hidden>No matching threads found.</div>
+          </div>
+        </aside>
+
+        <!-- RIGHT EXPLAINER WORKSPACE -->
+        <div class="explain-main">
+          <div id="explain-error" class="neu-card error-banner" role="alert" hidden></div>
+
+          <div id="explain-skeleton" class="explain-skeleton" aria-hidden="true">
+            <div class="neu-card skeleton-card-lg"></div>
+            <div class="neu-card skeleton-card-lg"></div>
+            <div class="lower-grid">
+              <div class="neu-card skeleton-card-md"></div>
+              <div class="neu-card skeleton-card-md"></div>
+            </div>
+          </div>
+
+          <div id="explain-content" hidden>
+            <!-- DECISION CARD -->
+            <section class="neu-card decision-card" aria-label="Decision summary">
+              <div class="decision-top">
+                <div class="decision-badges">
+                  <span id="dec-chip" class="status-chip"></span>
+                  <span id="dec-match-badge" class="match-badge" hidden></span>
+                </div>
+                <code id="dec-label-code" class="label-code"></code>
+              </div>
+
+              <div class="decision-body">
+                <div>
+                  <h2 id="dec-thread-title" class="thread-heading"></h2>
+                  <p id="dec-reason-plain" class="reason-plain"></p>
+                </div>
+                <div id="dec-counter-box" class="counter-box" hidden>
+                  <span class="counter-kicker">Counter Offer</span>
+                  <strong id="dec-counter-value" class="counter-amount"></strong>
+                </div>
+              </div>
+
+              <dl id="dec-meta-strip" class="meta-strip"></dl>
+            </section>
+
+            <!-- SUPPLIER MESSAGE CARD -->
+            <section class="neu-card message-card" aria-label="Supplier message">
+              <div class="card-header">
+                <h2 class="section-title">Supplier Message</h2>
+                <div class="highlight-legend" aria-label="Highlight legend">
+                  <span class="legend-item"><span class="swatch swatch-price"></span>Quoted price</span>
+                  <span class="legend-item"><span class="swatch swatch-banned"></span>Banned term</span>
+                  <span class="legend-item"><span class="swatch swatch-injection"></span>Prompt injection</span>
+                </div>
+              </div>
+              <div id="msg-history-banner" class="history-banner" hidden></div>
+              <pre id="msg-body" class="message-body"></pre>
+            </section>
+
+            <!-- TRACE + NUMBERS -->
+            <div class="lower-grid">
+              <section class="neu-card trace-card" aria-label="6-step decision trace">
+                <h2 class="section-title">Decision Procedure (Steps 1–6)</h2>
+                <ol id="trace-stepper" class="stepper"></ol>
+              </section>
+
+              <section class="neu-card numbers-card" aria-label="Price normalization and policy limits">
+                <h2 class="section-title">Numbers &amp; Policy Rules</h2>
+                <div id="numbers-gauge" class="gauge-wrap"></div>
+                <div id="spend-gauge" class="spend-wrap"></div>
+
+                <h3 class="sub-title">Price Normalization Breakdown</h3>
+                <div id="breakdown-wrap" class="breakdown-wrap"></div>
+
+                <h3 class="sub-title">Supplier Status, Amendments &amp; Contracts</h3>
+                <div id="overrides-wrap" class="overrides-wrap"></div>
+              </section>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- TAB 2: BATCH ANALYSIS -->
+    <section id="panel-batch" class="tab-panel" role="tabpanel" aria-labelledby="tab-batch" hidden>
+      <section class="neu-card batch-controls-card" aria-label="Batch CSV upload and runner">
+        <div class="batch-top-row">
+          <div id="drop-zone" class="drop-zone" tabindex="0" role="button" aria-label="Drop CSV file here or click to choose a file">
+            <input id="csv-file-input" type="file" accept=".csv,text/csv" class="sr-only">
+            <p class="drop-title">Drop a negotiation threads CSV here, or click to browse</p>
+            <p class="drop-sub">Max 5 MB &bull; Max 5,000 rows &bull; Required columns: thread_id, date, supplier, category, quantity, round, our_last_counter, supplier_message</p>
+          </div>
+          <div class="batch-actions">
+            <button type="button" class="btn btn-primary" id="run-real-batch-btn">Use threads.csv (2,000)</button>
+            <button type="button" class="btn btn-secondary" id="run-sample-batch-btn">Use sample_threads.csv (40)</button>
+            <button type="button" class="btn btn-secondary" id="download-csv-btn" disabled>Download submission CSV</button>
+          </div>
+        </div>
+
+        <div id="batch-error" class="error-banner" role="alert" hidden></div>
+
+        <div id="batch-progress-wrap" class="progress-wrap" hidden>
+          <div class="progress-meta">
+            <span id="batch-status-text" aria-live="polite">Starting batch…</span>
+            <span id="batch-pct-text">0%</span>
+          </div>
+          <div class="progress-track" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" id="batch-progress-bar">
+            <div class="progress-fill" id="batch-progress-fill"></div>
+          </div>
+        </div>
+      </section>
+
+      <div id="batch-empty" class="neu-card empty-batch">
+        <h2 class="section-title">No batch loaded yet</h2>
+        <p>Upload a CSV file or click <strong>Use threads.csv (2,000)</strong> above to compute decisions, charts, and a Kaggle-ready submission file.</p>
+      </div>
+
+      <div id="batch-skeleton" class="batch-skeleton" hidden aria-hidden="true">
+        <div class="kpi-grid">
+          <div class="neu-card skeleton-kpi"></div>
+          <div class="neu-card skeleton-kpi"></div>
+          <div class="neu-card skeleton-kpi"></div>
+          <div class="neu-card skeleton-kpi"></div>
+          <div class="neu-card skeleton-kpi"></div>
+        </div>
+        <div class="charts-grid">
+          <div class="neu-card skeleton-card-md"></div>
+          <div class="neu-card skeleton-card-md"></div>
+        </div>
+      </div>
+
+      <div id="batch-dashboard" hidden>
+        <section class="kpi-grid" id="batch-kpis" aria-label="Batch summary metrics"></section>
+
+        <section class="charts-grid" aria-label="Batch analytics charts">
+          <article class="neu-card chart-card">
+            <h2 class="section-title">Action Distribution</h2>
+            <div id="chart-actions" class="chart-box"></div>
+          </article>
+          <article class="neu-card chart-card">
+            <h2 class="section-title">Reason Breakdown</h2>
+            <div id="chart-reasons" class="chart-box"></div>
+          </article>
+          <article class="neu-card chart-card">
+            <h2 class="section-title">Category &times; Action</h2>
+            <div id="chart-categories" class="chart-box"></div>
+          </article>
+          <article class="neu-card chart-card">
+            <h2 class="section-title">Counter Rate by Round</h2>
+            <div id="chart-rounds" class="chart-box"></div>
+          </article>
+        </section>
+
+        <section class="neu-card results-card" aria-label="Batch results table">
+          <div class="results-toolbar">
+            <h2 class="section-title">Thread Results <span id="results-count" class="count-pill"></span></h2>
+            <div class="results-filters">
+              <label for="res-search" class="sr-only">Search results</label>
+              <input id="res-search" type="search" class="neu-input" placeholder="Search ID, supplier, label…">
+              <label for="res-action" class="sr-only">Filter by action</label>
+              <select id="res-action" class="neu-input">
+                <option value="">All Actions</option>
+                <option value="ACCEPT">ACCEPT</option>
+                <option value="COUNTER">COUNTER</option>
+                <option value="REJECT">REJECT</option>
+                <option value="ESCALATE">ESCALATE</option>
+              </select>
+              <label for="res-reason" class="sr-only">Filter by reason</label>
+              <select id="res-reason" class="neu-input">
+                <option value="">All Reasons</option>
+              </select>
+              <label for="res-category" class="sr-only">Filter by category</label>
+              <select id="res-category" class="neu-input">
+                <option value="">All Categories</option>
+              </select>
+              <label for="res-supplier" class="sr-only">Filter by supplier</label>
+              <select id="res-supplier" class="neu-input">
+                <option value="">All Suppliers</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="table-scroll">
+            <table class="results-table">
+              <thead>
+                <tr>
+                  <th><button type="button" class="sort-btn" data-sort="thread_id">Thread ID</button></th>
+                  <th><button type="button" class="sort-btn" data-sort="date">Date</button></th>
+                  <th><button type="button" class="sort-btn" data-sort="supplier">Supplier</button></th>
+                  <th><button type="button" class="sort-btn" data-sort="category">Category</button></th>
+                  <th><button type="button" class="sort-btn" data-sort="round">Round</button></th>
+                  <th><button type="button" class="sort-btn" data-sort="p">Normalized p</button></th>
+                  <th><button type="button" class="sort-btn" data-sort="L_r">L(r)</button></th>
+                  <th><button type="button" class="sort-btn" data-sort="label">Decision Label</button></th>
+                </tr>
+              </thead>
+              <tbody id="results-tbody"></tbody>
+            </table>
+          </div>
+
+          <div class="pagination-bar">
+            <span id="page-info" class="page-info"></span>
+            <div class="page-btns">
+              <button type="button" class="btn btn-secondary btn-sm" id="prev-page-btn">Previous</button>
+              <button type="button" class="btn btn-secondary btn-sm" id="next-page-btn">Next</button>
+            </div>
+          </div>
+        </section>
+      </div>
+    </section>
+  </main>
+
+  <script src="app.js" defer></script>
+</body>
+</html>

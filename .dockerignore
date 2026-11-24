@@ -1,0 +1,14 @@
+.venv/
+.git/
+.pytest_cache/
+__pycache__/
+*.pyc
+*.pyo
+.env
+ui_screenshots/
+checkpoints/
+NOTES.md
+PROFILE.md
+REVIEW.md
+submission.csv
+submission_v1.csv

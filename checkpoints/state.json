@@ -1,0 +1,97 @@
+{
+  "completed_stages": [
+    "step0_notes",
+    "stage1_core_rules",
+    "stage2_threads_audit",
+    "stage3_predict",
+    "stage3_validate",
+    "stage4_frozen",
+    "demo_stage1_backend",
+    "demo_stage2_frontend",
+    "demo_stage3_polish_verify",
+    "demo_stage4_hosting"
+  ],
+  "current_stage": "completed",
+  "sample_evaluation": {
+    "correct": 40,
+    "total": 40,
+    "accuracy": 100.0,
+    "updated_at": "2026-11-24T09:20:59.113875+00:00"
+  },
+  "last_updated": "2026-11-24T09:20:59.363416+00:00",
+  "selfcheck": {
+    "sample_round_gt_1_checked": 30,
+    "sample_mismatches": 0,
+    "threads_round_gt_1_checked": 1423,
+    "threads_mismatches": 0,
+    "parsed_positive_prices": 1908,
+    "genuine_missing_info": 92
+  },
+  "pattern_tests": {
+    "passed": 29,
+    "total": 29
+  },
+  "prediction": {
+    "total_threads": 2000,
+    "resumed_from_checkpoint": 0,
+    "llm_calls": 0,
+    "total_warnings": 92,
+    "action_counts": {
+      "REJECT": 333,
+      "ESCALATE": 680,
+      "ACCEPT": 358,
+      "COUNTER": 629
+    },
+    "reason_counts": {
+      "ABOVE_WALKAWAY": 228,
+      "OVER_APPROVAL_LIMIT": 284,
+      "PROMPT_INJECTION": 160,
+      "ACCEPTABLE_PRICE": 358,
+      "COUNTER_OFFER": 629,
+      "MISSING_INFO": 92,
+      "BLACKLISTED_SUPPLIER": 105,
+      "BANNED_TERM": 144
+    },
+    "updated_at": "2026-11-24T09:19:26.060277+00:00"
+  },
+  "validation": {
+    "passed": true,
+    "rows": 2000,
+    "action_counts": {
+      "REJECT": 333,
+      "ESCALATE": 680,
+      "ACCEPT": 358,
+      "COUNTER": 629
+    },
+    "reason_counts": {
+      "ABOVE_WALKAWAY": 228,
+      "OVER_APPROVAL_LIMIT": 284,
+      "PROMPT_INJECTION": 160,
+      "ACCEPTABLE_PRICE": 358,
+      "COUNTER_OFFER": 629,
+      "MISSING_INFO": 92,
+      "BLACKLISTED_SUPPLIER": 105,
+      "BANNED_TERM": 144
+    },
+    "total_warnings": 92,
+    "llm_threads": 0,
+    "updated_at": "2026-11-24T09:20:59.363401+00:00"
+  },
+  "frozen_at": "2026-11-23T06:46:09.743918+00:00",
+  "demo_backend": {
+    "pytest_passed": 8,
+    "pytest_total": 8,
+    "wrapper_consistency_real": "2000/2000",
+    "wrapper_consistency_samples": "40/40",
+    "updated_at": "2026-11-24T09:10:32.693669+00:00"
+  },
+  "demo_frontend": {
+    "screenshots_captured": 11,
+    "batch_2000_ui_elapsed_sec": 0.93,
+    "overflow_1366x768": false,
+    "overflow_390x844": false,
+    "console_errors": 0,
+    "updated_at": "2026-11-24T09:18:12.303237+00:00"
+  },
+  "docker_base_image": "python:3.14-slim"
+}
